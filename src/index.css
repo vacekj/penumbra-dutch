@@ -1,0 +1,10 @@
+@font-face {
+    font-family: Faktum;
+    src: url("faktum-regular.otf") format("opentype");
+}
+
+@font-face {
+    font-family: FaktumBold;
+    font-weight: bold;
+    src: url("faktum-bold.otf") format("opentype");
+}
