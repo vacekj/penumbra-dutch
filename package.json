@@ -9,6 +9,7 @@
     "lint": "bunx @biomejs/biome lint --apply src/**/*"
   },
   "dependencies": {
+    "@buf/penumbra-zone_penumbra.bufbuild_es": "1.8.0-20240420003548-a0d2523c4d1a.2",
     "@chakra-ui/react": "^2.8.2",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
@@ -16,7 +17,7 @@
     "framer-motion": "^11.2.6",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "@buf/penumbra-zone_penumbra.bufbuild_es": "1.8.0-20240420003548-a0d2523c4d1a.2"
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@biomejs/biome": "1.7.3",

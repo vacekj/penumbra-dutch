@@ -24,10 +24,11 @@ import {
 } from "@chakra-ui/react";
 import {
 	DutchAuctionDescription,
-	AuctionStateByIdResponse,
 } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
 import { AssetId } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/asset/v1/asset_pb";
 import { Amount } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/num/v1/num_pb";
+import { useAuctionStore } from "./store";
+import { AuctionsList } from "./AuctionsList";
 
 const DURATION_MAP = {
 	0: 10 * 60,
@@ -61,6 +62,8 @@ const BLOCKS_PER_MINUTE = 60 / BLOCK_TIME_SECONDS;
 const CURRENT_HEIGHT = 0;
 
 function App() {
+	const { auctions, setAuctions } = useAuctionStore();
+
 	const [assetToSell, setAssetToSell] = useState<keyof typeof ASSET_MAP | "">(
 		"",
 	);
@@ -82,14 +85,17 @@ function App() {
 	const toast = useToast();
 
 	/** We set an auction length such that there are always at least 1 auctions, and at most 30 auctions, to cap gas costs */
-	const numberOfAuctions = mapValueToRange({
-		min: 0,
-		max: DURATION_MAP[100],
-		value: totalDurationInSeconds
-	}, {
-		min: 1,
-		max: 30
-	});
+	const numberOfAuctions = mapValueToRange(
+		{
+			min: 0,
+			max: DURATION_MAP[100],
+			value: totalDurationInSeconds,
+		},
+		{
+			min: 1,
+			max: 30,
+		},
+	);
 
 	return (
 		<Container maxW={"4xl"} mt={30} mx={"auto"} mb={10}>
@@ -144,6 +150,7 @@ function App() {
 						placeholder="Select token"
 						onChange={(e) => {
 							/*NB: we don't validate the e.target.value as the values are populated from the ASSET_MAP itself.*/
+							/*TODO: switch places of assetToSell and assetToReceive if they are the same */
 							setAssetToSell(e.target.value as keyof typeof ASSET_MAP);
 							console.log(e.target.value);
 						}}
@@ -279,8 +286,9 @@ function App() {
 
 							/*Start 5 minutes from now to give time to cancel*/
 							const startingHeight = CURRENT_HEIGHT + BLOCKS_PER_MINUTE * 5;
+
 							/* We want to create N sequential auctions, overlapping minimally with a random inteval < 1 minute */
-							const auctions = Array(numberOfAuctions).map((_, index) => {
+							const auctions = Array(numberOfAuctions).fill(undefined).map((_, index) => {
 								/* How many blocks should the auctions overlap*/
 								const overlapBlocks = Math.floor(
 									Math.random() * BLOCKS_PER_MINUTE,
@@ -291,29 +299,33 @@ function App() {
 								);
 
 								/* Create a new auction */
-								const auction = new DutchAuctionDescription({
-									startHeight: BigInt(startingHeight),
-									endHeight: BigInt(
-										(index + 1) *
-											Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) +
-											overlapBlocks,
-									),
-									input: {
-										amount: numberToAmount(amountToSell),
-										assetId: new AssetId({
-											altBaseDenom: assetToSell,
-										}),
-									},
-									maxOutput: numberToAmount(amountToSell / maxPrice),
-									minOutput: numberToAmount(amountToSell / minPrice),
-									outputId: new AssetId({
-										altBaseDenom: assetToReceive,
-									}),
-									nonce: getRandomNonce(),
+								const auction = auctionToDutchAuctionDescription({
+									amountToSell: amountToSell / numberOfAuctions,
+									startingHeight,
+									assetToReceive,
+									assetToSell,
+									auctionDurationSeconds,
+									index,
+									maxPrice,
+									minPrice,
+									overlapBlocks,
 								});
+
+								return auction;
 							});
 
 							setTimeout(() => {
+								/*Insert auctions into storage */
+								console.log(auctions);
+
+								setAuctions([
+									{
+										total: amountToSell,
+										data: auctions,
+										duration_secs: totalDurationInSeconds,
+									},
+								]);
+
 								setIsSubmitting(false);
 								toast({
 									title: "Auction created",
@@ -329,8 +341,53 @@ function App() {
 					</Button>
 				</FormControl>
 			</Flex>
+			<AuctionsList auctions={auctions.map(a => JSON.parse(a))} />
 		</Container>
 	);
+}
+
+export type AuctionData = {
+	startingHeight: number;
+	index: number;
+	auctionDurationSeconds: number;
+	amountToSell: number;
+	assetToSell: string;
+	overlapBlocks: number;
+	maxPrice: number;
+	minPrice: number;
+	assetToReceive: string;
+};
+
+function auctionToDutchAuctionDescription({
+	startingHeight,
+	index,
+	auctionDurationSeconds,
+	amountToSell,
+	assetToSell,
+	overlapBlocks,
+	maxPrice,
+	minPrice,
+	assetToReceive,
+}: AuctionData): DutchAuctionDescription {
+	return new DutchAuctionDescription({
+		startHeight: BigInt(startingHeight),
+		endHeight: BigInt(
+			(index + 1) * Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) +
+				overlapBlocks,
+		),
+		input: {
+			amount: numberToAmount(amountToSell),
+			assetId: new AssetId({
+				altBaseDenom: assetToSell,
+			}),
+		},
+		maxOutput: numberToAmount(amountToSell / maxPrice),
+		minOutput: numberToAmount(amountToSell / minPrice),
+		outputId: new AssetId({
+			altBaseDenom: assetToReceive,
+		}),
+		nonce: getRandomNonce(),
+	});
 }
 
 function numberToAmount(value: number): Amount {
