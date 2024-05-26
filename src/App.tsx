@@ -60,7 +60,7 @@ const BLOCKS_PER_MINUTE = 60 / BLOCK_TIME_SECONDS;
 const CURRENT_HEIGHT = 0;
 
 function App() {
-	const { auctions, setAuctions } = useAuctionStore();
+	const { auctions: serializedAuctions, setAuctions } = useAuctionStore();
 
 	const [assetToSell, setAssetToSell] = useState<keyof typeof ASSET_MAP | "">(
 		"",
@@ -119,15 +119,14 @@ function App() {
 					In a Penumbra auction, the seller sets a starting price and a reserve
 					price. The price then decreases linearly over the duration of the
 					auction, with the asset being sold to the highest bidder at the
-					current price. The auction is divided into a number of sequential
-					sub-auctions, each auctioning off a portion of the total amount.
+					current price.
 				</Box>
 
 				<Box>
 					<Heading fontSize={"2xl"}>How to start?</Heading>
-					In the auction house below, set the asset you want to sell, asset you
+					In the auction box below, set the asset you want to sell, asset you
 					want to receive and the parameters of the auction. Upon clicking the
-					"Launch auction" button, the Dutch auction will commence.
+					"Create auction" button, your auction will be queued.
 				</Box>
 			</SimpleGrid>
 
@@ -150,7 +149,6 @@ function App() {
 							/*NB: we don't validate the e.target.value as the values are populated from the ASSET_MAP itself.*/
 							/*TODO: switch places of assetToSell and assetToReceive if they are the same */
 							setAssetToSell(e.target.value as keyof typeof ASSET_MAP);
-							console.log(e.target.value);
 						}}
 					>
 						{Object.keys(ASSET_MAP).map((key) => (
@@ -183,7 +181,6 @@ function App() {
 						onChange={(e) => {
 							/*NB: we don't validate the e.target.value as the values are populated from the ASSET_MAP itself.*/
 							setAssetToReceive(e.target.value as keyof typeof ASSET_MAP);
-							console.log(e.target.value);
 						}}
 					>
 						{Object.keys(ASSET_MAP).map((assetKey) => (
@@ -279,7 +276,6 @@ function App() {
 						w={"full"}
 						colorScheme={"blue"}
 						onClick={() => {
-							console.log("starting auction");
 							setIsSubmitting(true);
 
 							/*Start 5 minutes from now to give time to cancel*/
@@ -316,10 +312,10 @@ function App() {
 
 							setTimeout(() => {
 								/*Insert auctions into storage */
-								console.log(auctions);
-
 								setAuctions([
+									...serializedAuctions.map((a) => JSON.parse(a)),
 									{
+										id: getRandomNonce().toString(),
 										total: amountToSell,
 										data: auctions,
 										durationSecs: totalDurationInSeconds,
@@ -344,7 +340,7 @@ function App() {
 					</Button>
 				</FormControl>
 			</Flex>
-			<AuctionsList auctions={auctions.map((a) => JSON.parse(a))} />
+			<AuctionsList auctions={serializedAuctions.map((a) => JSON.parse(a))} />
 		</Container>
 	);
 }

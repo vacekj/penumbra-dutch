@@ -3,6 +3,7 @@ import type { DutchAuctionDescription } from "@buf/penumbra-zone_penumbra.bufbui
 import { persist } from "zustand/middleware";
 
 export type Auction = {
+	id: string;
 	data: DutchAuctionDescription[];
 	/** Total amount to sell */
 	total: number;

@@ -1,13 +1,15 @@
 import {
 	Box,
+	Button,
 	Heading,
 	HStack,
 	Link,
 	Progress,
+	Tag,
 	VStack,
 } from "@chakra-ui/react";
 import { ExternalLinkIcon } from "@chakra-ui/icons";
-import type { Auction } from "./store";
+import { Auction, useAuctionStore } from "./store";
 import { blockToTime } from "./App";
 
 export function AuctionsList(props: { auctions: Auction[] }) {
@@ -21,27 +23,42 @@ export function AuctionsList(props: { auctions: Auction[] }) {
 				gap={5}
 				maxW={"2xl"}
 			>
-				<Heading mb={-5} alignSelf={"start"}>
-					Your auctions
-				</Heading>
-				{props.auctions.map((auction, i) => (
-					<AuctionCard key={JSON.stringify(auction)} auction={auction} />
-				))}
+				{props.auctions.length > 0 ? (
+					<>
+						<Heading mb={-5} alignSelf={"start"}>
+							My auctions
+						</Heading>
+						{props.auctions.map((auction, i) => (
+							<AuctionCard key={JSON.stringify(auction)} auction={auction} />
+						))}
+					</>
+				) : (
+					<></>
+				)}
 			</VStack>
 		</>
 	);
 }
+
+type AuctionStatus = "queued" | "active" | "ended";
 
 function AuctionCard({
 	auction,
 }: {
 	auction: Auction;
 }) {
-	console.log("auct", auction.durationSecs);
 	const startDate = new Date(blockToTime(auction.startBlock) * 1000);
 	const endDate = new Date(
 		(blockToTime(auction.startBlock) + auction.durationSecs) * 1000,
 	);
+	const status: AuctionStatus =
+		new Date() > endDate
+			? "ended"
+			: new Date() > startDate
+				? "active"
+				: "queued";
+
+	const { setAuctions, auctions } = useAuctionStore();
 	return (
 		<VStack
 			alignItems={"stretch"}
@@ -52,9 +69,16 @@ function AuctionCard({
 			rounded={"lg"}
 		>
 			<HStack alignItems={"center"} justifyContent={"space-between"} mb={3}>
-				<Heading fontSize={"2xl"}>{auction.total} {auction.data[0]?.input?.assetId?.altBaseDenom.toUpperCase()}</Heading>
+				<Heading fontSize={"2xl"}>
+					{auction.total}{" "}
+					{auction.data[0]?.input?.assetId?.altBaseDenom.toUpperCase()}
+				</Heading>
 				<Heading fontSize={"lg"}>→</Heading>
-				<Heading fontSize={"2xl"}>{(auction.total * auction.startPrice).toFixed(2)} - {(auction.total * auction.endPrice).toFixed(2)} {auction.data[0]?.outputId?.altBaseDenom.toUpperCase()}</Heading>
+				<Heading fontSize={"2xl"}>
+					{(auction.total * auction.startPrice).toFixed(2)} -{" "}
+					{(auction.total * auction.endPrice).toFixed(2)}{" "}
+					{auction.data[0]?.outputId?.altBaseDenom.toUpperCase()}
+				</Heading>
 			</HStack>
 			<HStack alignItems={"center"} justifyContent={"space-between"}>
 				<Box>5 TIA / ETH</Box>
@@ -66,8 +90,30 @@ function AuctionCard({
 				<Box>{endDate.toLocaleString()}</Box>
 			</HStack>
 			<HStack mt={3} alignItems={"center"} justifyContent={"space-between"}>
+				<Box display={"flex"} alignItems={"center"} gap={3}>
+					Status: <StatusTag status={status} />
+				</Box>
+				{status !== "ended" && (
+					<Button
+						colorScheme={"red"}
+						onClick={() => {
+							setAuctions(
+								auctions
+									.map((auction) => JSON.parse(auction))
+									.filter((currentAuction: Auction) => {
+										// return false;
+										return currentAuction.id !== auction.id;
+									}),
+							);
+						}}
+					>
+						Cancel
+					</Button>
+				)}
+			</HStack>
+			<HStack mt={3} alignItems={"center"} justifyContent={"space-between"}>
 				<Box fontSize={"small"} color={"gray.500"}>
-					Auction ID: 098021n3kl123==
+					Auction ID: {auction.id}
 				</Box>
 				<Link
 					display={"flex"}
@@ -82,6 +128,19 @@ function AuctionCard({
 			</HStack>
 		</VStack>
 	);
+}
+
+function StatusTag({ status }: { status: AuctionStatus }) {
+	return (() => {
+		switch (status) {
+			case "queued":
+				return <Tag size={"lg"}>Queued</Tag>;
+			case "active":
+				return <Tag size={"lg"}>Active</Tag>;
+			case "ended":
+				return <Tag size={"lg"}>Ended</Tag>;
+		}
+	})();
 }
 
 function calculateProgress(startDate: Date, endDate: Date): number {
