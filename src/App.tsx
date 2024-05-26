@@ -18,9 +18,22 @@ import {
 	SliderFilledTrack,
 	SliderMark,
 	SliderThumb,
-	SliderTrack, useToast,
+	SliderTrack,
+	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import {
+	DutchAuctionDescription,
+	AuctionStateByIdResponse,
+} from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
+import { AssetId } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/asset/v1/asset_pb";
+import { Amount } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/num/v1/num_pb";
+
+const labelStyles = {
+	mt: "2",
+	ml: "-2.5",
+	fontSize: "sm",
+};
 
 const ASSET_MAP = {
 	eth: "Ethereum",
@@ -28,27 +41,37 @@ const ASSET_MAP = {
 	btc: "Bitcoin",
 };
 
+/** Blocktime of the current chain. We assume 12 seconds for simplicity */
+const BLOCK_TIME_SECONDS = 12;
+const BLOCKS_PER_MINUTE = 60 / BLOCK_TIME_SECONDS;
+
+/* We assume we are at block 0 */
+const CURRENT_HEIGHT = 0;
+
 function App() {
 	const [assetToSell, setAssetToSell] = useState<keyof typeof ASSET_MAP | "">(
 		"",
 	);
+	const [amountToSell, setAmountToSell] = useState(0);
+	const [minPrice, setMinPrice] = useState(0);
+	const [maxPrice, setMaxPrice] = useState(0);
 	const [assetToReceive, setAssetToReceive] = useState<
 		keyof typeof ASSET_MAP | ""
 	>("");
 
 	/** Duration of the sum of auctions in seconds, defaults to one hour */
-	const [durationSeconds, setDurationSeconds] = useState(60 * 60);
-
-	const labelStyles = {
-		mt: "2",
-		ml: "-2.5",
-		fontSize: "sm",
-	};
+	const [totalDurationSeconds, setTotalDurationSeconds] = useState(60 * 60);
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const assetText = assetToReceive ? ASSET_MAP[assetToReceive] : "asset";
 	const toast = useToast();
+
+	/** We set an auction to last roughly 30 blocks */
+	const numberOfAuctions = Math.floor(
+		(totalDurationSeconds / 30) * BLOCK_TIME_SECONDS,
+	);
+
 	return (
 		<Container maxW={"4xl"} mt={30} mx={"auto"} mb={10}>
 			<Heading
@@ -117,7 +140,12 @@ function App() {
 				<FormControl>
 					<FormLabel>Amount to sell</FormLabel>
 					<InputGroup>
-						<Input defaultValue={"0"} type={"number"} />
+						<Input
+							value={amountToSell}
+							defaultValue={"0"}
+							type={"number"}
+							onChange={(e) => setAmountToSell(Number(e.target.value))}
+						/>
 						<InputRightElement mr={2}>
 							{assetToSell.toUpperCase()}
 						</InputRightElement>
@@ -145,7 +173,12 @@ function App() {
 				<FormControl>
 					<FormLabel>Starting price</FormLabel>
 					<InputGroup>
-						<Input defaultValue={"0"} type={"number"} />
+						<Input
+							value={maxPrice}
+							defaultValue={"0"}
+							type={"number"}
+							onChange={(e) => setMaxPrice(Number(e.target.value))}
+						/>
 						<InputRightElement mr={2}>
 							{assetToReceive.toUpperCase()}
 						</InputRightElement>
@@ -158,7 +191,12 @@ function App() {
 				<FormControl>
 					<FormLabel>Reserve price</FormLabel>
 					<InputGroup>
-						<Input defaultValue={"0"} type={"number"} />
+						<Input
+							value={minPrice}
+							defaultValue={"0"}
+							type={"number"}
+							onChange={(e) => setMinPrice(Number(e.target.value))}
+						/>
 						<InputRightElement mr={2}>
 							{assetToReceive.toUpperCase()}
 						</InputRightElement>
@@ -173,7 +211,7 @@ function App() {
 					<Slider
 						step={12.5}
 						aria-label="slider-ex"
-						onChange={(val) => setDurationSeconds(val)}
+						onChange={(val) => setTotalDurationSeconds(val)}
 					>
 						<SliderMark value={0} {...labelStyles}>
 							10 min
@@ -219,6 +257,42 @@ function App() {
 						onClick={() => {
 							console.log("starting auction");
 							setIsSubmitting(true);
+
+							/*Start 5 minutes from now to give time to cancel*/
+							const startingHeight = CURRENT_HEIGHT + BLOCKS_PER_MINUTE * 5;
+							/* We want to create N sequential auctions, overlapping minimally with a random inteval < 1 minute */
+							const auctions = Array(numberOfAuctions).map((_, index) => {
+								/* How many blocks should the auctions overlap*/
+								const overlapBlocks = Math.floor(
+									Math.random() * BLOCKS_PER_MINUTE,
+								);
+
+								const auctionDurationSeconds = Math.floor(
+									totalDurationSeconds / numberOfAuctions,
+								);
+
+								/* Create a new auction */
+								const auction = new DutchAuctionDescription({
+									startHeight: BigInt(startingHeight),
+									endHeight: BigInt(
+										(index + 1) *
+											Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) + overlapBlocks,
+									),
+									input: {
+										amount: numberToAmount(amountToSell),
+										assetId: new AssetId({
+											altBaseDenom: assetToSell,
+										}),
+									},
+									maxOutput: numberToAmount(amountToSell / maxPrice),
+									minOutput: numberToAmount(amountToSell / minPrice),
+									outputId: new AssetId({
+										altBaseDenom: assetToReceive,
+									}),
+									nonce: getRandomNonce(),
+								});
+							});
+
 							setTimeout(() => {
 								setIsSubmitting(false);
 								toast({
@@ -227,7 +301,7 @@ function App() {
 									status: "success",
 									duration: 3_000,
 									isClosable: true,
-								})
+								});
 							}, 2_000);
 						}}
 					>
@@ -237,6 +311,19 @@ function App() {
 			</Flex>
 		</Container>
 	);
+}
+
+function numberToAmount(value: number): Amount {
+	// TODO: bigints are arbitrarily sized, so we should test if amountToSell fits into 128 bits, and split at 64 bits.
+	return new Amount({
+		lo: BigInt(Math.floor(value)),
+	});
+}
+
+function getRandomNonce() {
+	const randomArray = new Uint8Array(10);
+	crypto.getRandomValues(randomArray);
+	return randomArray;
 }
 
 export default App;
