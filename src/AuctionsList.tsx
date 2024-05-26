@@ -9,8 +9,9 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import { ExternalLinkIcon } from "@chakra-ui/icons";
-import { Auction, useAuctionStore } from "./store";
-import { blockToTime } from "./App";
+import { type Auction, useAuctionStore } from "./store";
+
+import { blockToTimestamp } from "./utils";
 
 export function AuctionsList(props: { auctions: Auction[] }) {
 	return (
@@ -28,7 +29,7 @@ export function AuctionsList(props: { auctions: Auction[] }) {
 						<Heading mb={-5} alignSelf={"start"}>
 							My auctions
 						</Heading>
-						{props.auctions.map((auction, i) => (
+						{props.auctions.map((auction) => (
 							<AuctionCard key={JSON.stringify(auction)} auction={auction} />
 						))}
 					</>
@@ -47,9 +48,9 @@ function AuctionCard({
 }: {
 	auction: Auction;
 }) {
-	const startDate = new Date(blockToTime(auction.startBlock) * 1000);
+	const startDate = new Date(blockToTimestamp(auction.startBlock) * 1000);
 	const endDate = new Date(
-		(blockToTime(auction.startBlock) + auction.durationSecs) * 1000,
+		(blockToTimestamp(auction.startBlock) + auction.durationSecs) * 1000,
 	);
 	const status: AuctionStatus =
 		new Date() > endDate

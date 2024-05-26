@@ -1,16 +1,16 @@
-import { useState } from "react";
+import {useState} from "react";
 import {
 	Box,
 	Button,
 	Container,
 	Flex,
 	FormControl,
+	FormErrorMessage,
 	FormHelperText,
 	FormLabel,
 	Heading,
 	Input,
 	InputGroup,
-	InputRightAddon,
 	InputRightElement,
 	Select,
 	SimpleGrid,
@@ -20,44 +20,24 @@ import {
 	SliderThumb,
 	SliderTrack,
 	useToast,
-	VStack,
 } from "@chakra-ui/react";
-import { DutchAuctionDescription } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
-import { AssetId } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/asset/v1/asset_pb";
-import { Amount } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/num/v1/num_pb";
-import { useAuctionStore } from "./store";
-import { AuctionsList } from "./AuctionsList";
-
-const DURATION_MAP = {
-	0: 10 * 60,
-	12.5: 30 * 60,
-	25: 60 * 60,
-	37.5: 2 * 60 * 60,
-	50: 6 * 60 * 60,
-	62.5: 12 * 60 * 60,
-	75: 24 * 60 * 60,
-	87.5: 48 * 60 * 60,
-	100: 96 * 60 * 60,
-};
+import {useAuctionStore} from "./store";
+import {AuctionsList} from "./AuctionsList";
+import {
+	ASSET_MAP, auctionToDutchAuctionDescription,
+	BLOCKS_PER_MINUTE,
+	CURRENT_HEIGHT,
+	DURATION_MAP,
+	durationIdToActualDuration,
+	getRandomNonce,
+	mapValueToRange
+} from "./utils";
 
 const labelStyles = {
 	mt: "2",
 	ml: "-2.5",
 	fontSize: "sm",
 };
-
-const ASSET_MAP = {
-	eth: "Ethereum",
-	tia: "Celestia",
-	btc: "Bitcoin",
-};
-
-/** Blocktime of the current chain. We assume 12 seconds for simplicity */
-const BLOCK_TIME_SECONDS = 12;
-const BLOCKS_PER_MINUTE = 60 / BLOCK_TIME_SECONDS;
-
-/* We assume we are at block 0 */
-const CURRENT_HEIGHT = 0;
 
 function App() {
 	const { auctions: serializedAuctions, setAuctions } = useAuctionStore();
@@ -66,8 +46,9 @@ function App() {
 		"",
 	);
 	const [amountToSell, setAmountToSell] = useState(0);
-	const [minPrice, setMinPrice] = useState(0);
+	const [priceError, setPriceError] = useState(false);
 	const [maxPrice, setMaxPrice] = useState(0);
+	const [minPrice, setMinPrice] = useState(0);
 	const [assetToReceive, setAssetToReceive] = useState<
 		keyof typeof ASSET_MAP | ""
 	>("");
@@ -79,10 +60,10 @@ function App() {
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const assetText = assetToReceive ? ASSET_MAP[assetToReceive] : "asset";
+	const assetText = assetToSell ? ASSET_MAP[assetToSell] : "asset";
 	const toast = useToast();
 
-	/** We set an auction length such that there are always at least 1 auctions, and at most 30 auctions, to cap gas costs */
+	/** We set an auction length such that there are always at least 1 sub-auctions, and at most 30 sub-auctions, to cap gas costs */
 	const numberOfAuctions = mapValueToRange(
 		{
 			min: 0,
@@ -105,9 +86,9 @@ function App() {
 			>
 				Penumbra Dutch Auctions
 			</Heading>
-			<SimpleGrid fontSize={"medium"} mt={10} columns={3} spacing={10}>
+			<SimpleGrid fontSize={"medium"} mt={10} columns={[1, 3]} spacing={10}>
 				<Box>
-					<Heading fontSize={"2xl"}>Dutch auction</Heading>
+					<Heading fontSize={"2xl"}>Dutch auctions</Heading>
 					Penumbra auctions are a unique type of Dutch auction where the asset
 					is sold over a series of sequential auctions, each auctioning off a
 					portion of the total amount. This allows for a more gradual price
@@ -126,7 +107,7 @@ function App() {
 					<Heading fontSize={"2xl"}>How to start?</Heading>
 					In the auction box below, set the asset you want to sell, asset you
 					want to receive and the parameters of the auction. Upon clicking the
-					"Create auction" button, your auction will be queued.
+					"Create auction" button, your auction will be queued to start in 5 minutes.
 				</Box>
 			</SimpleGrid>
 
@@ -147,7 +128,6 @@ function App() {
 						placeholder="Select token"
 						onChange={(e) => {
 							/*NB: we don't validate the e.target.value as the values are populated from the ASSET_MAP itself.*/
-							/*TODO: switch places of assetToSell and assetToReceive if they are the same */
 							setAssetToSell(e.target.value as keyof typeof ASSET_MAP);
 						}}
 					>
@@ -163,8 +143,7 @@ function App() {
 					<FormLabel>Amount to sell</FormLabel>
 					<InputGroup>
 						<Input
-							value={amountToSell}
-							defaultValue={"0"}
+							value={amountToSell !== 0 ? amountToSell : ""}
 							type={"number"}
 							onChange={(e) => setAmountToSell(Number(e.target.value))}
 						/>
@@ -191,12 +170,11 @@ function App() {
 					</Select>
 				</FormControl>
 
-				<FormControl>
+				<FormControl isInvalid={priceError}>
 					<FormLabel>Starting price</FormLabel>
 					<InputGroup>
 						<Input
-							value={maxPrice}
-							defaultValue={"0"}
+							value={maxPrice !== 0 ? maxPrice : ""}
 							type={"number"}
 							onChange={(e) => setMaxPrice(Number(e.target.value))}
 						/>
@@ -205,16 +183,15 @@ function App() {
 						</InputRightElement>
 					</InputGroup>
 					<FormHelperText>
-						Price at which your {assetText} is going to be sold
+						Price at which your {assetText} is going to start selling
 					</FormHelperText>
 				</FormControl>
 
-				<FormControl>
+				<FormControl isInvalid={priceError}>
 					<FormLabel>Reserve price</FormLabel>
 					<InputGroup>
 						<Input
-							value={minPrice}
-							defaultValue={"0"}
+							value={minPrice !== 0 ? minPrice : ""}
 							type={"number"}
 							onChange={(e) => setMinPrice(Number(e.target.value))}
 						/>
@@ -222,9 +199,15 @@ function App() {
 							{assetToReceive.toUpperCase()}
 						</InputRightElement>
 					</InputGroup>
-					<FormHelperText>
-						The lowest price at which your {assetText} is going to be sold
-					</FormHelperText>
+					{!priceError ? (
+						<FormHelperText>
+							The lowest price at which your {assetText} is going to be sold
+						</FormHelperText>
+					) : (
+						<FormErrorMessage>
+							Reserve price cannot be higher than Starting price
+						</FormErrorMessage>
+					)}
 				</FormControl>
 
 				<FormControl pb={10}>
@@ -276,6 +259,23 @@ function App() {
 						w={"full"}
 						colorScheme={"blue"}
 						onClick={() => {
+							if (
+								minPrice === 0 ||
+								maxPrice === 0 ||
+								amountToSell === 0 ||
+								assetToSell === "" ||
+								assetToReceive === ""
+							) {
+								return;
+							}
+
+							/*Check that starting price >= reserve price*/
+							if (minPrice > maxPrice) {
+								setPriceError(true);
+								return;
+							}
+
+							setPriceError(false);
 							setIsSubmitting(true);
 
 							/*Start 5 minutes from now to give time to cancel*/
@@ -345,105 +345,5 @@ function App() {
 	);
 }
 
-export type AuctionData = {
-	startingHeight: number;
-	index: number;
-	auctionDurationSeconds: number;
-	amountToSell: number;
-	assetToSell: string;
-	overlapBlocks: number;
-	maxPrice: number;
-	minPrice: number;
-	assetToReceive: string;
-};
-
-function auctionToDutchAuctionDescription({
-	startingHeight,
-	index,
-	auctionDurationSeconds,
-	amountToSell,
-	assetToSell,
-	overlapBlocks,
-	maxPrice,
-	minPrice,
-	assetToReceive,
-}: AuctionData): DutchAuctionDescription {
-	return new DutchAuctionDescription({
-		startHeight: BigInt(startingHeight),
-		endHeight: BigInt(
-			(index + 1) * Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) +
-				overlapBlocks,
-		),
-		input: {
-			amount: numberToAmount(amountToSell),
-			assetId: new AssetId({
-				altBaseDenom: assetToSell,
-			}),
-		},
-		maxOutput: numberToAmount(amountToSell * maxPrice),
-		minOutput: numberToAmount(amountToSell * minPrice),
-		outputId: new AssetId({
-			altBaseDenom: assetToReceive,
-		}),
-		nonce: getRandomNonce(),
-	});
-}
-
-function numberToAmount(value: number): Amount {
-	// TODO: bigints are arbitrarily sized, so we should test if amountToSell fits into 128 bits, and split at 64 bits.
-	return new Amount({
-		lo: BigInt(Math.floor(value)),
-	});
-}
-
-/** Gets a random 10-byte array to be used as a nonce */
-function getRandomNonce() {
-	const randomArray = new Uint8Array(10);
-	crypto.getRandomValues(randomArray);
-	return randomArray;
-}
-
-/** Since the slider to select duration is non-linear, we treat the value as an id,
- * and convert to actual seconds in this function
- * @returns duration in seconds
- * */
-function durationIdToActualDuration(durationid: number) {
-	if (!(durationid in DURATION_MAP)) {
-		console.warn(
-			"Duration Id not found in duration map, defaulting to 10 minutes",
-		);
-		return DURATION_MAP[0];
-	}
-
-	return DURATION_MAP[durationid as keyof typeof DURATION_MAP];
-}
-
-type Range = {
-	min: number;
-	max: number;
-};
-
-type InputRange = Range & {
-	value: number;
-};
-
-/** Linearly maps a value from one range to another */
-function mapValueToRange(input: InputRange, output: Range): number {
-	const { value, min: inputMin, max: inputMax } = input;
-	const { min: outputMin, max: outputMax } = output;
-
-	// Calculate the ratio of the value within the input range
-	const ratio = (value - inputMin) / (inputMax - inputMin);
-
-	// Map the ratio to the output range and round to the nearest integer
-	const mappedValue = Math.round(outputMin + ratio * (outputMax - outputMin));
-
-	return mappedValue;
-}
-
-export function blockToTime(blockNumber: number) {
-	/** Assume the chain started today */
-	return Date.now() / 1000 + BLOCK_TIME_SECONDS * blockNumber;
-}
 
 export default App;
