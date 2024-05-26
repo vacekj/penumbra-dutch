@@ -7,8 +7,10 @@ export type Auction = {
 	/** Total amount to sell */
 	total: number;
 	/** Duration in seconds */
-	duration_secs: number;
+	durationSecs: number;
 	startBlock: number;
+	startPrice: number;
+	endPrice: number;
 };
 
 interface AuctionStore {

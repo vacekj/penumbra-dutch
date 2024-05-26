@@ -22,9 +22,7 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import {
-	DutchAuctionDescription,
-} from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
+import { DutchAuctionDescription } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
 import { AssetId } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/asset/v1/asset_pb";
 import { Amount } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/num/v1/num_pb";
 import { useAuctionStore } from "./store";
@@ -288,31 +286,33 @@ function App() {
 							const startingHeight = CURRENT_HEIGHT + BLOCKS_PER_MINUTE * 5;
 
 							/* We want to create N sequential auctions, overlapping minimally with a random inteval < 1 minute */
-							const auctions = Array(numberOfAuctions).fill(undefined).map((_, index) => {
-								/* How many blocks should the auctions overlap*/
-								const overlapBlocks = Math.floor(
-									Math.random() * BLOCKS_PER_MINUTE,
-								);
+							const auctions = Array(numberOfAuctions)
+								.fill(undefined)
+								.map((_, index) => {
+									/* How many blocks should the auctions overlap*/
+									const overlapBlocks = Math.floor(
+										Math.random() * BLOCKS_PER_MINUTE,
+									);
 
-								const auctionDurationSeconds = Math.floor(
-									totalDurationInSeconds / numberOfAuctions,
-								);
+									const auctionDurationSeconds = Math.floor(
+										totalDurationInSeconds / numberOfAuctions,
+									);
 
-								/* Create a new auction */
-								const auction = auctionToDutchAuctionDescription({
-									amountToSell: amountToSell / numberOfAuctions,
-									startingHeight,
-									assetToReceive,
-									assetToSell,
-									auctionDurationSeconds,
-									index,
-									maxPrice,
-									minPrice,
-									overlapBlocks,
+									/* Create a new auction */
+									const auction = auctionToDutchAuctionDescription({
+										amountToSell: amountToSell / numberOfAuctions,
+										startingHeight,
+										assetToReceive,
+										assetToSell,
+										auctionDurationSeconds,
+										index,
+										maxPrice,
+										minPrice,
+										overlapBlocks,
+									});
+
+									return auction;
 								});
-
-								return auction;
-							});
 
 							setTimeout(() => {
 								/*Insert auctions into storage */
@@ -322,8 +322,10 @@ function App() {
 									{
 										total: amountToSell,
 										data: auctions,
-										duration_secs: totalDurationInSeconds,
-										startBlock: startingHeight
+										durationSecs: totalDurationInSeconds,
+										startBlock: startingHeight,
+										startPrice: maxPrice,
+										endPrice: minPrice,
 									},
 								]);
 
@@ -342,7 +344,7 @@ function App() {
 					</Button>
 				</FormControl>
 			</Flex>
-			<AuctionsList auctions={auctions.map(a => JSON.parse(a))} />
+			<AuctionsList auctions={auctions.map((a) => JSON.parse(a))} />
 		</Container>
 	);
 }
@@ -382,8 +384,8 @@ function auctionToDutchAuctionDescription({
 				altBaseDenom: assetToSell,
 			}),
 		},
-		maxOutput: numberToAmount(amountToSell / maxPrice),
-		minOutput: numberToAmount(amountToSell / minPrice),
+		maxOutput: numberToAmount(amountToSell * maxPrice),
+		minOutput: numberToAmount(amountToSell * minPrice),
 		outputId: new AssetId({
 			altBaseDenom: assetToReceive,
 		}),
@@ -444,8 +446,8 @@ function mapValueToRange(input: InputRange, output: Range): number {
 }
 
 export function blockToTime(blockNumber: number) {
-	/** Assume the chain started on 1/1/2024 */
-	return 1704067261 + BLOCK_TIME_SECONDS * blockNumber;
+	/** Assume the chain started today */
+	return Date.now() / 1000 + BLOCK_TIME_SECONDS * blockNumber;
 }
 
 export default App;

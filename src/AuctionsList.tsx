@@ -1,20 +1,16 @@
-import type { DutchAuctionDescription } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/component/auction/v1alpha1/auction_pb";
 import {
 	Box,
 	Heading,
 	HStack,
-	Icon,
 	Link,
 	Progress,
 	VStack,
 } from "@chakra-ui/react";
 import { ExternalLinkIcon } from "@chakra-ui/icons";
-// biome-ignore lint/style/useImportType: <explanation>
-import { Auction } from "./store";
+import type { Auction } from "./store";
 import { blockToTime } from "./App";
 
 export function AuctionsList(props: { auctions: Auction[] }) {
-	console.log(props.auctions);
 	return (
 		<>
 			<VStack
@@ -25,7 +21,9 @@ export function AuctionsList(props: { auctions: Auction[] }) {
 				gap={5}
 				maxW={"2xl"}
 			>
-				<Heading mb={-5} alignSelf={'start'}>Your auctions</Heading>
+				<Heading mb={-5} alignSelf={"start"}>
+					Your auctions
+				</Heading>
 				{props.auctions.map((auction, i) => (
 					<AuctionCard key={JSON.stringify(auction)} auction={auction} />
 				))}
@@ -39,11 +37,10 @@ function AuctionCard({
 }: {
 	auction: Auction;
 }) {
-	console.log("auct", auction);
-	console.log(blockToTime(auction.startBlock));
+	console.log("auct", auction.durationSecs);
 	const startDate = new Date(blockToTime(auction.startBlock) * 1000);
 	const endDate = new Date(
-		(blockToTime(auction.startBlock) + auction.duration_secs) * 1000,
+		(blockToTime(auction.startBlock) + auction.durationSecs) * 1000,
 	);
 	return (
 		<VStack
@@ -55,15 +52,15 @@ function AuctionCard({
 			rounded={"lg"}
 		>
 			<HStack alignItems={"center"} justifyContent={"space-between"} mb={3}>
-				<Heading fontSize={"2xl"}>100 ETH</Heading>
+				<Heading fontSize={"2xl"}>{auction.total} {auction.data[0]?.input?.assetId?.altBaseDenom.toUpperCase()}</Heading>
 				<Heading fontSize={"lg"}>→</Heading>
-				<Heading fontSize={"2xl"}>300 - 500 TIA</Heading>
+				<Heading fontSize={"2xl"}>{(auction.total * auction.startPrice).toFixed(2)} - {(auction.total * auction.endPrice).toFixed(2)} {auction.data[0]?.outputId?.altBaseDenom.toUpperCase()}</Heading>
 			</HStack>
 			<HStack alignItems={"center"} justifyContent={"space-between"}>
 				<Box>5 TIA / ETH</Box>
 				<Box>3 TIA / ETH</Box>
 			</HStack>
-			<Progress value={80} />
+			<Progress value={calculateProgress(startDate, endDate)} />
 			<HStack alignItems={"center"} justifyContent={"space-between"}>
 				<Box>{startDate.toLocaleString()}</Box>
 				<Box>{endDate.toLocaleString()}</Box>
@@ -85,4 +82,22 @@ function AuctionCard({
 			</HStack>
 		</VStack>
 	);
+}
+
+function calculateProgress(startDate: Date, endDate: Date): number {
+	const currentTime = new Date().getTime();
+	const startTime = startDate.getTime();
+	const endTime = endDate.getTime();
+
+	// Ensure the current time is within the range
+	if (currentTime <= startTime) {
+		return 0;
+	} else if (currentTime >= endTime) {
+		return 100;
+	}
+
+	// Calculate the progress
+	const progress = ((currentTime - startTime) / (endTime - startTime)) * 100;
+
+	return Math.round(progress);
 }
