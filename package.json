@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@buf/penumbra-zone_penumbra.bufbuild_es": "1.8.0-20240420003548-a0d2523c4d1a.2",
+    "@chakra-ui/icons": "^2.1.1",
     "@chakra-ui/react": "^2.8.2",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",

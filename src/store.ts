@@ -8,6 +8,7 @@ export type Auction = {
 	total: number;
 	/** Duration in seconds */
 	duration_secs: number;
+	startBlock: number;
 };
 
 interface AuctionStore {

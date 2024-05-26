@@ -323,6 +323,7 @@ function App() {
 										total: amountToSell,
 										data: auctions,
 										duration_secs: totalDurationInSeconds,
+										startBlock: startingHeight
 									},
 								]);
 
@@ -440,6 +441,11 @@ function mapValueToRange(input: InputRange, output: Range): number {
 	const mappedValue = Math.round(outputMin + ratio * (outputMax - outputMin));
 
 	return mappedValue;
+}
+
+export function blockToTime(blockNumber: number) {
+	/** Assume the chain started on 1/1/2024 */
+	return 1704067261 + BLOCK_TIME_SECONDS * blockNumber;
 }
 
 export default App;
