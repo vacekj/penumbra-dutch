@@ -29,6 +29,18 @@ import {
 import { AssetId } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/asset/v1/asset_pb";
 import { Amount } from "@buf/penumbra-zone_penumbra.bufbuild_es/penumbra/core/num/v1/num_pb";
 
+const DURATION_MAP = {
+	0: 10 * 60,
+	12.5: 30 * 60,
+	25: 60 * 60,
+	37.5: 2 * 60 * 60,
+	50: 6 * 60 * 60,
+	62.5: 12 * 60 * 60,
+	75: 24 * 60 * 60,
+	87.5: 48 * 60 * 60,
+	100: 96 * 60 * 60,
+};
+
 const labelStyles = {
 	mt: "2",
 	ml: "-2.5",
@@ -60,17 +72,24 @@ function App() {
 	>("");
 
 	/** Duration of the sum of auctions in seconds, defaults to one hour */
-	const [totalDurationSeconds, setTotalDurationSeconds] = useState(60 * 60);
+	const [durationId, setDurationId] = useState(0);
+
+	const totalDurationInSeconds = durationIdToActualDuration(durationId);
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const assetText = assetToReceive ? ASSET_MAP[assetToReceive] : "asset";
 	const toast = useToast();
 
-	/** We set an auction to last roughly 30 blocks */
-	const numberOfAuctions = Math.floor(
-		(totalDurationSeconds / 30) * BLOCK_TIME_SECONDS,
-	);
+	/** We set an auction length such that there are always at least 1 auctions, and at most 30 auctions, to cap gas costs */
+	const numberOfAuctions = mapValueToRange({
+		min: 0,
+		max: DURATION_MAP[100],
+		value: totalDurationInSeconds
+	}, {
+		min: 1,
+		max: 30
+	});
 
 	return (
 		<Container maxW={"4xl"} mt={30} mx={"auto"} mb={10}>
@@ -211,7 +230,7 @@ function App() {
 					<Slider
 						step={12.5}
 						aria-label="slider-ex"
-						onChange={(val) => setTotalDurationSeconds(val)}
+						onChange={(val) => setDurationId(val)}
 					>
 						<SliderMark value={0} {...labelStyles}>
 							10 min
@@ -268,7 +287,7 @@ function App() {
 								);
 
 								const auctionDurationSeconds = Math.floor(
-									totalDurationSeconds / numberOfAuctions,
+									totalDurationInSeconds / numberOfAuctions,
 								);
 
 								/* Create a new auction */
@@ -276,7 +295,8 @@ function App() {
 									startHeight: BigInt(startingHeight),
 									endHeight: BigInt(
 										(index + 1) *
-											Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) + overlapBlocks,
+											Math.ceil(auctionDurationSeconds / BLOCK_TIME_SECONDS) +
+											overlapBlocks,
 									),
 									input: {
 										amount: numberToAmount(amountToSell),
@@ -320,10 +340,49 @@ function numberToAmount(value: number): Amount {
 	});
 }
 
+/** Gets a random 10-byte array to be used as a nonce */
 function getRandomNonce() {
 	const randomArray = new Uint8Array(10);
 	crypto.getRandomValues(randomArray);
 	return randomArray;
+}
+
+/** Since the slider to select duration is non-linear, we treat the value as an id,
+ * and convert to actual seconds in this function
+ * @returns duration in seconds
+ * */
+function durationIdToActualDuration(durationid: number) {
+	if (!(durationid in DURATION_MAP)) {
+		console.warn(
+			"Duration Id not found in duration map, defaulting to 10 minutes",
+		);
+		return DURATION_MAP[0];
+	}
+
+	return DURATION_MAP[durationid as keyof typeof DURATION_MAP];
+}
+
+type Range = {
+	min: number;
+	max: number;
+};
+
+type InputRange = Range & {
+	value: number;
+};
+
+/** Linearly maps a value from one range to another */
+function mapValueToRange(input: InputRange, output: Range): number {
+	const { value, min: inputMin, max: inputMax } = input;
+	const { min: outputMin, max: outputMax } = output;
+
+	// Calculate the ratio of the value within the input range
+	const ratio = (value - inputMin) / (inputMax - inputMin);
+
+	// Map the ratio to the output range and round to the nearest integer
+	const mappedValue = Math.round(outputMin + ratio * (outputMax - outputMin));
+
+	return mappedValue;
 }
 
 export default App;
